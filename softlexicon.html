@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>模板</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@3.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css"
+          integrity="sha384-AfEj0r4/OFrOo5t7NnNe46zW/tFgW6x/bCJG8FqQCEo3+Aro6EYUG4+cU+KJWu/X" crossorigin="anonymous">
+</head>
+<body>
+<div class="container">
+    <h1 class="text-center text-primary">Simplify the Usage of Lexicon in Chinese NER. ACL 2020</h1>
+    <p class="text-center">
+        <a href="index.html"><span class="glyphicon glyphicon-home"></span>返回首页</a>&nbsp;&nbsp;
+        <span>create: 2020-08-21</span>
+    </p>
+    <h3>1. 摘要</h3>
+    <p>近年来，很多工作尝试使用词典来提高中文命名实体识别的性能。具有代表性的模型Lattice-LSTM在几个开放的中文NER数据集上取得了不错的成绩。但是Lattice-LSTM的模型结构非常复杂，缓慢的推理速度限制了它在工业界的应用。</p>
+    <p>本文提出一个简单但是有效的方法Softlexicon，只需要对词嵌入层做轻微的调整就可以将词典信息融入到字嵌入中去。实验结果表明，softlexicon在取得更好的成绩的同时，推理速度达到了Lattice-LSTM的6.15倍。并且，softlexicon可以很简单地和预训练模型（如BERT）结合起来。</p>
+    <h3>2. ExSoftword Feature</h3>
+    <p>在Lattice-LSTM中介绍的char+bichar是把词嵌入和bigram词嵌入拼接在一起，输入到序列建模模型中去。</p>
+    <p>后来的模型考虑把词的信息也加进去，具体的做法就是先对序列进行分词，这时根据词可以得到每个字的分词标签{B, M, E, S, O}<sup><a href="#fn1" id="refn1">[1]</a></sup>，这样就可以构建一个5维的one-hot特征向量。然后将其拼接到词嵌入上去，如下所示：
+    </p>
+    <p>
+        $$
+        x_j^c \leftarrow [x_j^c; e^{seg}(segs(c_j))]
+        $$
+    </p>
+    <p>以一个具体的例子来看：</p>
+    <div class="text-center image-block">
+        <img src="images/softlexicon-exsoftword.png" alt="softlexicon-exsoftword">
+    </div>
+    <p>通过词典的匹配，“中”就只有一个{B}，而“山”有三个标签{B,M,E}。</p>
+    <p>但是这样也有两个缺点：（1）无法引入预训练词向量；（2）仍旧损失了匹配的信息，因为即使给定了${c_5, c_6, c_7, c_8}$分别是{{B}, {B, M, E}, {M, E},
+        {E}}，对应匹配的结果仍旧不止一种，比如{“中山”， “中山西”，“山西路”}或者{“中山”，“山西”，“中山西路”}。</p>
+    <h3>3. SoftLexicon</h3>
+    <p>基于刚才的ExSoftword，这里提出SoftLexicon特征，构建的过程包含匹配词分类、压缩词集合、结合词表征三个部分。</p>
+    <h4>3.1 匹配词分类</h4>
+    <p>匹配词分类很简单，一图胜千言：</p>
+    <div class="text-center image-block">
+        <img src="images/softlexicon-softlexicon.png" alt="softlexicon">
+    </div>
+    <p>把之前每个字的one-hot向量改成四个词集合，分别对应BMES，每个词集合包含若干个匹配的词，如果集合为空，则填None。</p>
+    <p>对第$i$个字$c_i$，有：</p>
+    <p>
+        $$
+        \begin{aligned}
+        B(c_i) & = \{w_{i,k}, \forall w_{i,k} \in L, i < k \leq n \},\\
+        M(c_i) & = \{w_{j,k}, \forall w_{j,k} \in L, 1 \leq j < i < k \leq n \},\\
+        E(c_i) & = \{w_{j,i}, \forall w_{j,i} \in L, 1 \leq j < i \},\\
+        S(c_i) & = \{c_i, \exist c_i \in L\}\end{aligned}
+        $$
+    </p>
+    <blockquote>上式中w表示词，L表示词典，n表示序列长度，位置是从1到n的</blockquote>
+    <p>这样，我们不仅可以引入预训练词向量，还可以恢复之前的匹配结果，没有信息损失。</p>
+    <h4>2.2 压缩词集合（condensing word set）</h4>
+    <p>压缩词集合，就是分别把每个词集合内的若干个词融合成单个词表征。</p>
+    <p>很容易想到的有均化和基于权重两种。</p>
+    <p>均化的公式如下所示，但是效果不好：</p>
+    <p>$$v^s(S) = \frac{1}{|S|} \sum_{w \in S}e^w(w)$$</p>
+    <blockquote>S表示词集合，|S|表示词集合长度，$e^w$表示词嵌入lookup table</blockquote>
+    <p>基于权重的方法最直接想到就是动态注意力，但是需要大量计算，所以这里采用词频作用权重。</p>
+    <p>假设$z(w)$表示词$w$在统计数据（由训练集和开发集组成，当然如果有任务相关的其他数据，也可以加进来）中的词频，那么词集合S的加权表征为：</p>
+    <p>$$v^s(S) = \frac{4}{Z}\sum_{w \in S}z(w)e^w(w)$$</p>
+    <p>其中</p>
+    <p>$$Z = \sum_{w \in B \bigcup M \bigcup E \bigcup S}z(w)$$</p>
+    <blockquote>因为Z是四个词集合所有词的词频之和，所以$\frac{Z}{4}$是单个词集合的归一化因子</blockquote>
+    <h4>2.3 结合词表征</h4>
+    <p>将上一步得到的四个集合的集合表征和词表征拼接：</p>
+    <p>
+        $$e^s(B, M, E, S) = [v^s(B);v^s(M);v^s(E);v^s(S)],\\
+        x^c \leftarrow [x^c;e^s(B, M, E, S)]$$
+    </p>
+    <h3>3. 实验效果</h3>
+    <p>本文实验大都是在Lattice-LSTM上改的，包括很多模型设置等。</p>
+    <h4>3.1 推理速度实验对比</h4>
+    <div class="text-center image-block">
+        <img src="images/lexicon-table2.png" alt="tabl2">
+    </div>
+    <p>从表格中基本可以看出，以Lattice-LSTM的推理速度为标准，比较发现SoftLexicon+LSTM（这里实际上是BiLSTM+CRF），推理速度达到了6.15倍。主要的凭借就是模型简单。</p>
+    <p>除此之外，实验还分析了句子长度对推理速度的影响：</p>
+    <div class="text-center image-block">
+        <img src="images/lexicon-fig4.png" alt="fig4">
+    </div>
+    <p>当batch_size设置为1的时候，发现Soft-lexicon始终是处于优势的。</p>
+    <h4>3.2 性能实验对比</h4>
+    <p>第一个是在OntoNotes数据集上，</p>
+    <div class="text-center image-block">
+        <img src="images/lexicon-table3.png" alt="table3">
+    </div>
+    <p>和Lattice-LSTM对比，使用LSTM提高5%，使用BERT提高7%；比仅使用BERT相比提高7%，比BERT-LSTM-CRF提高2%；所以提升是非常可观的。</p>
+    <p>第二个是在MSRA数据集上</p>
+    <div class="text-center image-block">
+        <img src="images/lexicon-table4.png" alt="table4">
+    </div>
+    <p>提升不大，2%，主要还是因为都是90%+；</p>
+    <p>第三个是微博数据集，和Lattice-LSTM相比，使用LSTM提升6%，使用了BERT提升17%，比BERT-LSTM-CRF提升1%</p>
+    <div class="text-center image-block">
+        <img src="images/lexicon-table5.png" alt="table5">
+    </div>
+    <p>第四个是简历数据集</p>
+    <div class="text-center image-block">
+        <img src="images/lexicon-table6.png" alt="table6">
+    </div>
+    <p>提升不是很大，成绩都是90%+</p>
+    <p>最后来对比下，不同序列建模层和SoftLexicon结合的性能差距：</p>
+    <div class="text-center image-block">
+        <img src="images/lexicon-table7.png" alt="table7">
+    </div>
+    <p>实验发现，SoftLexicon+LSTM是要超过CNN和Transformer的；并且SoftLexicon超过ExSoftword。</p>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/jquery@1.12.4/dist/jquery.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@3.3.7/dist/js/bootstrap.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.js"
+        integrity="sha384-g7c+Jr9ZivxKLnZTDUhnkOnsh30B4H0rpLUpJ4jAIKs4fnJI+sEnkvrMWph2EDg4"
+        crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/contrib/auto-render.min.js"
+        integrity="sha384-mll67QQFJfxn0IYznZYonOWZ644AWYC+Pt2cHqMaRhXVrursRwvLnLaebdGIlYNa"
+        crossorigin="anonymous"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        renderMathInElement(document.body, {
+            delimiters:
+                [
+                    {left: "$$", right: "$$", display: true},
+                    {left: "$", right: "$", display: false},
+                    {left: "\\(", right: "\\)", display: false},
+                    {left: "\\[", right: "\\]", display: true}
+                ]
+        });
+    });
+</script>
+</script>
+</body>
+</html>

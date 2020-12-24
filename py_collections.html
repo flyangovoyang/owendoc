@@ -11,12 +11,32 @@
 </head>
 <body>
 <div class="container">
-    <h1 class="text-center text-primary">一级标题</h1>
+    <h1 class="text-center text-primary">Python Collections</h1>
     <p class="text-center">
         <a href="index.html"><span class="glyphicon glyphicon-home"></span>返回首页</a>&nbsp;&nbsp;
-        <span>create: xxxx</span>
+        <span>create: 2020-08-28 09:59:55</span>
     </p>
-    <h3>小标题</h3>
+    <p>collections模块是对python内置数据类型（如list, tuple, dict, set）的补充，包含了几个比较实用的类。</p>
+    <ul>
+        <li>named_tuples</li>
+        <li>deque</li>
+        <li>ChainMap</li>
+        <li>Counter</li>
+        <li>defaultdict</li>
+        <li>OrderedDict</li>
+        <li>UserList</li>
+        <li>UserDict</li>
+        <li>UserString</li>
+    </ul>
+    <h3>1. defaultdict</h3>
+    <p>defaultdict是dict的子类，通过传递一个默认工厂函数来创建默认的value</p>
+    <pre>
+import collections
+
+d = collections.defaultdict(list)
+print(d['a'])  # []</pre>
+    <h3>2. OrderedDict</h3>
+    <p>OrderedDict也是dict的一个子类，因为一般情况词典的key是无序的，但是OrderedDict的key是有序的，它会记住每个key被加进去的先后次序，从而保持key的顺序。</p>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/jquery@1.12.4/dist/jquery.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@3.3.7/dist/js/bootstrap.min.js"></script>

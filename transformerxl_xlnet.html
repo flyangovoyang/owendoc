@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>模板</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@3.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css"
+          integrity="sha384-AfEj0r4/OFrOo5t7NnNe46zW/tFgW6x/bCJG8FqQCEo3+Aro6EYUG4+cU+KJWu/X" crossorigin="anonymous">
+</head>
+<body>
+<div class="container">
+    <h1 class="text-center text-primary">Transformer-XL + XLNet</h1>
+    <p class="text-center">
+        <a href="index.html"><span class="glyphicon glyphicon-home"></span>返回首页</a>&nbsp;&nbsp;
+        <span>create: 2020-09-03 14:21:33</span>
+    </p>
+    <p>
+        BERT掀起NLP预训练模型的热潮之后，很多人都在BERT上修修补补，但也有少数工作敏锐地观察到，BERT之所以成功，最大的功臣其实是Transformer。本文介绍的Transformer-XL和XLNet就是比较成功的对Transformer进行改进的工作：Transformer-XL在Transformer基础上，延长上下文长度的同时也提高了推理速度；XLNet结合自编码语言模型和自回归语言模型二者之长，并引入Transformer-XL作为backbone，对比BERT成绩有较大的提升。</p>
+    <p>正是由于XLNet和Transformer-XL的一脉相承（两篇论文的作者都是来自CMU的博士戴自航、杨植麟），所以这里将它们放在一起。</p>
+    <h3>Transformer-XL</h3>
+    <h4>总览</h4>
+    <p>在捕捉长期依赖信息时，Transformer上下文的长度是固定的。于是Transformer-XL提出<strong>片段级循环机制</strong>（segment-level recurrence
+        mechanism）和<strong>相对位置编码</strong>（relative positional encoding）在不破坏时间连续性的前提下捕捉更长的上下文依赖信息。</p>
+    <p>实验结果表明Transformer-XL的上下文长度比RNN长80%，比vanilla
+        Transformer长450%，无论是短序列还是长序列，Transformer-XL都取得了更好的成绩，并且在评估时推导速度达到了vanilla Transformer的1800多倍。</p><h4>
+    上下文分裂问题（context fragmentation problem）</h4>
+    <p>语言模型的核心问题是<strong>有效地将任意长度的上下文编码成固定长度的表征</strong>。</p>
+    <p>一个简单暴力的办法就是将文本语料切成可以处理的等长的片段（segment），然后在依次在各个片段上进行训练，这种模型称为<strong>vanilla model</strong>。如下图所示，(a)展示了训练的过程，(b)展示了推导的过程。
+    </p>
+    <p>
+    <div><img src="images/transformerxl_context_fragmentation.png" alt="image" class="img-responsive center-block"/>
+    </div>
+    </p><p>vanilla
+    model的弊端就是上下文分裂。简单地将序列切割成固定长度的片段，会无视上一个片段的所有上下文信息，这样，片段的长度就成为能够学习到依赖信息的最大长度的上界。此外，由于各个片段之间是分开训练的，所以每次都需要自底向上逐层计算，这种计算方式低效且耗时。</p>
+    <h4>状态复用的片段级循环（segment-level recurrence with state reuse）</h4>
+    <p>Transformer-XL提出，每个片段内的计算都会复用上一个片段的隐藏状态（如下图绿色连线），这样当前片段内部就不用全部重头计算了，大大缩减了计算量。</p>
+    <p>假设$s_{\tau}=[x_{\tau,1}, ..., x_{\tau, L}]$和$s_{\tau + 1}=[x_{\tau+1,1}, ...,
+        x_{\tau+1,L}]$是两个长度为$L$的连续片段，$h_{\tau+1}^n$是片段$s_{\tau}$第n层的隐藏状态。那么$h_{\tau+1}^n$的计算过程为：</p>
+    <p>$$ \begin{aligned} \tilde{h}_{\tau+1}^{n-1} & = [SG(h_{\tau}^{n-1}) \circ h_{\tau+1}^{n-1}]\\ q_{\tau+1}^n,
+        k_{\tau+1}^n, v_{\tau+1}^n & = h_{\tau+1}^{n-1}W_q^T, \tilde{h}_{\tau+1}^{n-1}W_k^T,
+        \tilde{h}_{\tau+1}^{n-1}W_v^T\\ h_{\tau+1}^n & = TransformerLayer(q_{\tau+1}^n, k_{\tau+1}^n, v_{\tau+1}^n)
+        \end{aligned} $$</p>
+    <p>其中$SG(·)$表示停止梯度，$[h_u \circ h_v]$表示沿着序列长度所在轴的拼接。</p>
+    <blockquote><p> 有个细节，Q和KV不同，它仅来源于当前片段</p></blockquote>
+    <p>由此可见，Transformer-XL将上一个片段的隐藏状态固定并缓存，然后用于下一个片段的预测。</p>
+    <p>
+    <div><img src="images/transformerxl_segment_level_state_resuse.png" alt="image"
+              class="img-responsive center-block"/></div>
+    </p><p>如上图所示，在这种情况下，Transformer-XL的真实上下文长度（绿色阴影）是和层数成线性关系的，即$O(N \times L)$。除此之外，由于状态的复用，计算效率也得到了提高。</p>
+    <blockquote><p> 片段级循环，实现了上下文的扩展，解决了上下文分裂问题，同时还提高了计算效率。</p></blockquote>
+    <h4>相对位置编码</h4>
+    <p>状态复用的片段级循环通虽然解决了上下文分裂问题，但是也带来了一个新的问题，那就是之前的位置编码不再适用了，模型无法区分不同片段中相同位置的字符。</p>
+    <p>假设$U \in \Bbb R^{L_{max} \times
+        d}$为位置编码，$E_{s_\tau}$表示片段$s_{\tau}$的字符嵌入，Transformer的输入是字符嵌入和位置编码的和，隐藏状态的计算过程为：</p>
+    <p>$$ \begin{aligned} h_{\tau+1} & = f(h_{\tau}, E_{s_{\tau+1}}+U_{1:L})\\ h_{\tau} & = f(h_{\tau-1},
+        E_{s_{\tau}}+U_{1:L}) \end{aligned} $$</p>
+    <p>此时模型无法区分$x_{\tau, j}$和$x_{\tau+1, j}$之间的位置差异，$j=1, ..., L$。</p>
+    <p>在原先的Transformer中，位置$i$处的query和位置$j$处的key之间的注意力分数计算过程为：</p>
+    <p>$$ \begin{aligned} A_{i,j}^{abs} & = [W_q(E_{x_j}+U_i)]^TW_k(E_{x_j}+U_j)\\ & =
+        (E_{x_j}^T+U_i^T)W_q^TW_k(E_{x_j}+U_j)\\ & = \underbrace{E_{x_i}^TW_q^TW_kE_{x_j}}_{(a)} +
+        \underbrace{E_{x_i}^TW_q^TW_kU_j}_{(b)} + \underbrace{U_i^TW_q^TW_kE_{x_j}}_{(c)} +
+        \underbrace{U_i^TW_q^TW_kU_j}_{(d)} \end{aligned} $$</p>
+    <p>Transformer-XL提出使用相对位置编码来对绝对位置进行替换：</p>
+    <p>$$ \begin{aligned} A_{i,j}^{rel} = \underbrace{E_{x_i}^TW_q^T{\color{green}W_{k,E}}E_{x_j}}_{(a)} +
+        \underbrace{E_{x_i}^T W_q^T {\color{green}W_{k,R}} {\color{red} R_{i-j}}
+        }_{(b)}+\underbrace{{\color{blue}u^T}{\color{green}
+        W_{k,E}}E_{x_j}}_{(c)}+\underbrace{{\color{blue}v^T}{\color{green}W_{k,R}}{\color{red} R_{i-j}}}_{(d)}
+        \end{aligned} $$</p>
+    <p>修改的地方有三处：</p>
+    <ul>
+        <li>将所有绝对位置编码$U_j$换成对应的相对位置编码$R_{i-j}$。和Transformer的绝对位置编码一样，这里的相对位置编码也是个无需学习的正弦编码矩阵</li>
+        <li>将(c)中的$U_i^TW_q^T$换成可训练参数$u^T$，将(d)中的$U_i^TW_q^T$换成可训练的参数$v^T$，考虑到$U_iW_q^T$应该和位置$i$无关，每个位置对应的q应该相同</li>
+        <li>和$E$相乘的$W_k$换成$W_{k,R}$，表示基于内容的关键字向量（content-based key
+            vector），和$U$相乘的$W_k$换成$W_{k,R}$，表示基于位置的关键字向量（position-based key vector）
+        </li>
+    </ul>
+    <p>综合以上状态复用的片段级循环和相对位置编码，得到Transformer-XL完整计算过程：</p>
+    <p>$$ \begin{aligned} \tilde{h}_\tau^{n-1} & = [SG(m_\tau^{n-1}) \circ h_\tau^{n-1}]\\ q_\tau^n, k_\tau^n, v_\tau^n
+        & = h_\tau^{n-1}{W_q^n}^T, \tilde{h}_\tau^{n-1}{W_{k, E}^n}^T, \tilde{h}_\tau^{n-1}{W_v^n}^T\\ A_{\tau, i, j}^n
+        & = {q_{\tau, i}^n}^T k_{\tau, j}^n + {q_{\tau, i}^n}^T W_{k, R}^n R_{i-j} + u^Tk_{\tau, j} + v^TW_{k, R}^n
+        R_{i-j}\\ a_\tau^n & = Masked-Softmax(A_\tau^n)v_\tau^n\\ o_\tau^n & =
+        LayerNorm(Linear(a_\tau^n)+h_\tau^{n-1})\\ h_\tau^n & = Positionwise-Feed-Forward(o_\tau^n) \end{aligned} $$</p>
+    <h3>XLNet</h3><h4>总览</h4>
+    <p>为了同时捕获到上下文左右两边的信息，自回归模型XLNet<strong>在所有可能的因子分解顺序（factorization order）上最大化期望对数似然</strong>，并通过<strong>双流自注意力（two-stream
+        self-attention）</strong>架构来弥补对位置感知能力的缺失，从而完美地将自编码语言模型和自回归语言模型的优点结合在一起；而在模型方面，XLNet采用了比Transformer性能更好的Transformer-XL，并通过调整Transformer-XL的计算过程来更好地适应多种因子分解顺序。
+    </p>
+    <p>除了算法提升，XLNet在数据上也做了提升：在BERT的基础上加了三个数据集。实验结果表明，和BERT相比，XLNet在多个任务上均取得较大的提升。</p>
+    <blockquote><p> XLNet的成功经验：预训练领域提升成绩的主流方法都是算法和数据双管齐下。</p></blockquote>
+    <h4>自编码和自回归</h4>
+    <p>给定文本序列$x=[x_1, ..., x_T]$，自回归（autoregessive, AR）语言模型根据上文（或下文）预测当前字符，模型最大化如下的对数似然：</p>
+    <p>$$ \max_\theta \log p_\theta(x) = \sum_{t=1}^T \log p_\theta (x_t|x_{ \lt t}) $$</p>
+    <p>而自编码（autoencoding, AE）语言模型对上下文进行建模，以BERT为例，AE通过破坏-重构的思路来预测序列缺失的字符：</p>
+    <p>$$ \max_\theta \log p_\theta (\overline x | \hat x) \approx \sum_{t=1}^T m_t \log p_\theta (x_t | \hat x) $$</p>
+    <p>其中$m_t=1$表示$x_t$被遮掩。</p>
+    <p>二者的优缺点，可以从三个角度去分析：</p>
+    <ul>
+        <li>独立性假设：AE假设给定其他未遮掩字符，预测字符之间是独立的，这种独立性假设使得每个遮掩字符都是分开重构的。AE正是基于这种独立性假设来对联合概率$p_\theta(\overline x|\hat
+            x)$进行因子分解。而AE则是按照乘法规则对$p_\theta(x)$进行因子分解，字符之间是存在依赖关系的；
+        </li>
+        <li>输入噪声：AE，以BERT为例，会引入一些特殊字符（噪声），然而在微调的时候这些特殊字符却不会出现，从而导致预训练和微调的不一致；反观AR不依赖破坏输入序列，所以不存在这个问题；</li>
+        <li>上下文依赖：AR预测当前字符仅仅依赖于上文（或下文），属于单向的上下文，而AE则是可以利用上下文两边的信息。</li>
+    </ul>
+    <blockquote><p> 在双向上下文建模比单向好已经成为共识的时候，GPT系列模型却始终奉行单向建模。</p></blockquote>
+    <p>基于以上的分析，AE和AR各有优劣，于是XLNet考虑将二者的优点结合。</p><h4>排列语言建模（permutation language modeling）</h4>
+    <p>XLNet在本质上，仍旧属于AR模型，但是它在保留AR模型的优势的基础上，通过排列语言建模目标函数来捕获双向的上下文。</p>
+    <p>排列语言建模的核心思想就是，长度为$T$的序列，其因子分解顺序有$T!$种，如果模型在所有不同的因子分解顺序上共享参数，那么模型就能够学习收集所有位置的上下文信息。</p>
+    <p>以输入序列$[x_1, ..., x_T]$为例，$Z_T$是输入序列$x$所有可能的因子分解顺序，那么排列语言建模目标函数可以表示为：</p>
+    <p>$$ \max_\theta \quad \Bbb E_{z \thicksim Z_T} \bigg [ \sum_{t=1}^T \log p_\theta (x_{z_t} | x_{z \lt t})\bigg ]
+        $$</p>
+    <p>对于序列x，每次都取样出一个因子分解顺序，然后根据顺序来分解似然$p_\theta(x)$。于是，通过对所有因子分解顺序的建模，在任意位置上可以看到所有可能的上下文元素（即$x_i \not ={x_t}$）。</p>
+    <p>那么如何在保证序列顺序不变的前提下，更改序列的因子分解顺序呢？方法就是引入合适的注意力掩码（attention mask），如下图所示：</p>
+    <p>
+    <div><img src="images/xlnet_factorization_order_permutation.png" alt="factorization_order_permutation"
+              class="img-responsive center-block"/></div>
+    </p><p>左上角的图表示因子分解的顺序是3->2->4->1，那么此时$x_3$处，它只能看到初始值。</p>
+    <p>右上角的图表示因子分解的顺序是2->4->3->1，那么此时$x_3$处，它可以看到之前的2和4，即依赖于$x_2$和$x_4$。</p>
+    <p>左下和右下同理，于是通过注意力掩码可以有效实现在输入序列不变的情况下对序列执行不同的因子分解顺序。</p>
+    <blockquote><p> 这里将自回归和自编码结合，就不再是传统的自回归了，传统的自回归是把上一个位置的输出当做下一个位置的输入，而这里稍微改变了下形式，在上文的作用下是采用不同分解顺序，</p></blockquote>
+    <h4>双流注意力（two-stream self-attention）</h4>
+    <p>通过设置注意力掩码，可以很好地利用Transformer来根据上文预测字符：</p>
+    <p>$$ p_\theta(x_{z_t} | x_{z \lt t}) = \frac{exp\big ( e(x)^T h_\theta(x_{z \lt t})\big )}{\sum_{x'}exp
+        \big(e(x')^Th_\theta(x_{z \lt t})\big)} $$</p>
+    <p>其中$h_\theta$表示基于注意力生成的上文表征。但是上面这个预测的式子缺失了对位置的感知能力，也就是预测token的概率分布不会因为目标位置而有所不同</p>
+    <blockquote><p> 疑问：上文相同时，当前位置不就唯一确定了吗，难道存在两个因子分解顺序z1, z2，$z1_{\lt t} = z2_{\lt t}$但是$z1_t \not
+        ={z2_t}$？关键是论文在appendix中，还真的举了这个例子。。。</p></blockquote>
+    <p>为了弥补对位置的感知能力，现把位置作为输入，并把当前位置的输入剔除掉，得到目标感知的表征（target-aware representation）：</p>
+    <p>$$ p_\theta (x_{z_t}|x_{z \lt t}) = \frac{exp\big ( e(x)^T g_\theta(x_{z \lt t}, {\color{red}z_t} )\big
+        )}{\sum_{x'}exp \big(e(x')^T g_\theta(x_{z \lt t}, {\color{red}z_t})\big)} \tag {*} $$</p>
+    <p>于是将以上二者结合得到如下所示的双流自注意力：</p>
+    <p>
+    <div><img src="images/xlnet_two_stream_selfattention.png" alt="two_stream_selfattention"
+              class="img-responsive center-block"/></div>
+    </p><p>（a）图表示内容流自注意力（content stream self-attention），也就是常规的注意力方法，它对所有上文以及当前位置的隐藏状态进行编码，得到$h_\theta(x_{z \leq
+    t})$，目的是预测<strong>下文的字符</strong>（$z_{\gt t}$）；</p>
+    <p>（b）图表示查询流自注意力（query stream self-attention），对上文隐藏状态以及当前位置进行编码，输出$g_\theta(x_{z \lt t}, z_t)$，进而预测当前字符。</p>
+    <p>
+        （c）图则是整个架构的展示，左边表示了三层的Transformer，每一层都包含了右边的两个注意力流。可以看到两个注意力掩码方阵的主对角是有区别的：内容流是全满的，表示可以看到自身，而查询流是全空的，表示看不到自身。另外，内容流的初始层（第0层输入层）的参数就是embedding
+        $e(x)$，查询层的初始层的参数是可训练向量$w$，其余层都是共享参数的。层与层之间的参数更新过程如下：</p>
+    <p>$$ \begin{aligned} g_{z_t}^{(m)} & \leftarrow Attention \big ( Q=g_{z_t}^{(m-1)}, KV=h_{z \lt t}^{(m-1)}; \theta
+        \big ) \quad query \space stream\\ h_{z_t}^{(m)} & \leftarrow Attention \big ( Q=h_{z_t}^{(m-1)}, KV=h_{z \leq
+        t}^{(m-1)}; \theta \big ) \quad content \space stream \end{aligned} $$</p>
+    <p>预训练时利用最后一层的$g_{z_t}^{(M)}$来预测公式(*)；在微调时，简单地把查询流注意力删除即可。</p>
+    <p>为了让模型快速收敛，选择一个切分点，选择让模型只预测尾部的一些字符。</p><h4>引入Transformer-XL</h4>
+    <p>Transformer-XL存在片段的缓存，所以KV是来源自多个片段的，这里对其计算过程进行调整（当前片段只取上文的隐藏状态）：</p>
+    <p>$$ h_{z_t}^{(m)} \leftarrow Attention(Q=h_{z_t}^{(m-1)}, KV=[\tilde{h}^{m-1}, h_{z \leq t}^{m-1}]; \theta) $$</p>
+    <p>这里的[,]是按照序列长度进行的拼接。</p><h4>多片段建模</h4>
+    <p>对于句子对任务，需要输入多个句子。</p>
+    <h3>最后</h3>
+    <p>Transformer-XL和XLNet是基于BERT改进最“成功”的模型，也确实是从模型上进行了创新，进步很大。</p>
+    <p>机器之心对二人做了一场<a href="https://new.qq.com/omn/20190802/20190802A0AIJ800.html">报道</a>，其中有几个观点具有参考性：</p>
+    <ul>
+        <li><strong>依靠算力解决问题是当前研究 AI 的王道</strong>：让计算机去做它的强项——计算；如果算力解决不了的问题，再用算法去做。“我读过人工智能先驱 Richard Sutton
+            几个月前的文章《苦涩的教训》，它的大意是说：你如果纵观 70 年的 AI 发展历程，就会发现<strong>以算力为杠杆的通用方法是最有效的</strong>。从深蓝、AlphaGo 到 NLP
+            最近的进展都遵循了这个思路。所以我们要做的事情就是：一方面把算力推到极致，另一方面发明和提升通用算法，解决更难的问题。XLNet 可以理解成这两方面的一个结合。”
+        </li>
+        <li>“把算力推到极致的好处是知晓当前算法的边界，<strong>避免在算力可以解决的问题上做一些不必要的算法创新</strong>，让大家关注最重要的研究问题。但同时大算力带来的弊端是提升了研究门槛，比如一般的学校和实验室可能没有资源做预训练。这个问题我觉得短时间内要通过不同的分工来解决，资源多的研究者利用资源做大算力研究，资源少的研究者做基于小算力的研究。”
+        </li>
+        <li>早几天 XLNet 团队公平地对比了 BERT-Large 和 XLNet-Large 两个模型，他们表示尽管 XLNet 的数据是 BERT 的 10
+            倍，但算法带来的提升相比于数据带来的提升更大。杨植麟说：“我认为并不是数据越多越好，我们的 XLNet 基本上将手头有的数据都加上去了，但我们需要做更仔细的分析，因为很可能数据质量和数量之间会有一个权衡关系。BERT
+            所采用的 BooksCorpus 和 English Wikipedia 数据集质量都非常高，它们都是专业作者书写的文本。但是后面增加的 Common Crawl 或 ClueWeb
+            数据集都是网页，虽然它们的数据量非常大，但质量会相对比较低。所以它们的影响值得进一步探索，如何在数据数量和质量之间取得一个好的平衡是一个重要的课题。另外，细分领域的训练数据是十分有限的，如何在预训练的框架下做
+            domain adaptation 也是一个重要问题。”
+        </li>
+        <li>在预训练语言模型上，杨植麟表示还有 3 个非常有潜力的方向。首先即<strong>怎样在 Transformer 架构基础上构建更强的长距离建模方式</strong>，例如这个月 Facebook
+            提出的Adaptive Attention Span和杨植麟之前提出的 Transformer-XL 都在积极探索。其次在于<strong>怎样加强最优化的稳定性</strong>，因为研究者发现在训练
+            Transformer 时，Adam 等最优化器不是太稳定。例如目前在训练过程中，一定要加上 Warm up
+            机制，即学习率从0开始逐渐上升到想要的值，如果不加的话Transformer甚至都不会收敛。这表明最优化器是有一些问题的，warm
+            up之类的技巧可能没有解决根本问题。最后模型可提升的地方在于训练效率，怎样用更高效的架构、训练方式来提升预训练效果。例如最近天津大学提出的Tensorized Transformer，他们通过张量分解大大降低
+            Muti-head Attention 的参数量，从而提高Transformer 的参数效率。
+        </li>
+    </ul>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/jquery@1.12.4/dist/jquery.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@3.3.7/dist/js/bootstrap.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.js"
+        integrity="sha384-g7c+Jr9ZivxKLnZTDUhnkOnsh30B4H0rpLUpJ4jAIKs4fnJI+sEnkvrMWph2EDg4"
+        crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/contrib/auto-render.min.js"
+        integrity="sha384-mll67QQFJfxn0IYznZYonOWZ644AWYC+Pt2cHqMaRhXVrursRwvLnLaebdGIlYNa"
+        crossorigin="anonymous"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        renderMathInElement(document.body, {
+            delimiters:
+                [
+                    {left: "$$", right: "$$", display: true},
+                    {left: "$", right: "$", display: false},
+                    {left: "\\(", right: "\\)", display: false},
+                    {left: "\\[", right: "\\]", display: true}
+                ]
+        });
+    });
+</script>
+</script>
+</body>
+</html>

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>模板</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@3.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css"
+          integrity="sha384-AfEj0r4/OFrOo5t7NnNe46zW/tFgW6x/bCJG8FqQCEo3+Aro6EYUG4+cU+KJWu/X" crossorigin="anonymous">
+</head>
+<body>
+<div class="container">
+    <h1 class="text-center text-primary">深度学习学习率的动态调整策略</h1>
+    <p class="text-center">
+        <a href="index.html"><span class="glyphicon glyphicon-home"></span>返回首页</a>&nbsp;&nbsp;
+        <span>create: 2020-08-21</span>
+    </p>
+    <h3>动态调整学习率</h3>
+    <p>
+        学习率决定梯度下降的步长，早期的模型训练都是保持学习率固定不变，但是随着训练语料越来越大，训练时间越来越长，固定的学习率会带来很多问题：学习率过大，模型收敛很快，然后在极值附近震荡，这时loss会停留在较大值无法继续下降；学习率过小，模型收敛很慢，而且很容易陷入局部最优解。</p>
+    <p>动态调整学习率的提出是出于这样的需求：在前期，我们希望学习率大一点，避免陷入小坑；在训练的后期，我们希望学习率小一点，这样可以避免在极值附近震荡。由此可见动态调整学习率在加快训练速度的同时还可以提高最佳成绩。</p>
+    <h3>衰减式调整策略</h3>
+    <p>衰减式调整策略是常见的调整策略。具体做法就是先设置一个较大的学习率，然后随着步数的增加，不断衰减学习率。如果步数大，表现为阶梯式衰减，步数小，表现为曲线式衰减。</p>
+    <p>假设我们每经过decay_steps步，就给初始学习率$\eta$乘上一个衰减因子$\gamma$，这样对于任意global_steps，学习率为：</p>
+    <p>$$learning\_rate = \gamma^{ \lfloor \frac{ global\_steps}{decay\_steps} \rfloor } * \eta$$</p>
+    <p>以衰减步数step_size=10，衰减因子gamma=0.1为例，我们就可以得到如下的学习速率变化曲线：</p>
+    <div class="text-center image-block">
+        <img src="images/step_lr.png" alt="step_lr" width="30%">
+    </div>
+    <div class="code-block" style="display:none">
+            <pre>
+import torch
+import torch.nn as nn
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
+from torch.optim.lr_scheduler import StepLR
+import torch.optim as optim
+
+
+class m(nn.Module):
+    def __init__(self):
+        super(m, self).__init__()
+        self.layer = nn.Linear(3, 3)
+
+    def forward(self, x):
+        return self.layer(x)
+
+
+model = m()
+optimizer = optim.Adam(model.parameters(), lr=0.1)
+scheduler = StepLR(optimizer, step_size=10, gamma=0.7)
+x = []
+y = []
+for i in range(70):
+    x.append(i)
+    y.append(scheduler.get_last_lr()[0])
+    optimizer.step()
+    scheduler.step()
+
+plt.plot(x, y)
+plt.show()</pre>
+    </div>
+    <p>对应的api有：</p>
+    <ul>
+        <li><code>torch.optim.lr_scheduler.LambdaLR()</code></li>
+        <li><code>torch.optim.lr_scheduler.MultiplicativeLR()</code></li>
+        <li><code>torch.optim.lr_scheduler.StepLR()</code></li>
+    </ul>
+    <h3>热身后衰减调整策略</h3>
+
+    <p>直到后来又出现先热身再衰减的策略。</p>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/jquery@1.12.4/dist/jquery.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@3.3.7/dist/js/bootstrap.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.js"
+        integrity="sha384-g7c+Jr9ZivxKLnZTDUhnkOnsh30B4H0rpLUpJ4jAIKs4fnJI+sEnkvrMWph2EDg4"
+        crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/contrib/auto-render.min.js"
+        integrity="sha384-mll67QQFJfxn0IYznZYonOWZ644AWYC+Pt2cHqMaRhXVrursRwvLnLaebdGIlYNa"
+        crossorigin="anonymous"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        renderMathInElement(document.body, {
+            delimiters:
+                [
+                    {left: "$$", right: "$$", display: true},
+                    {left: "$", right: "$", display: false},
+                    {left: "\\(", right: "\\)", display: false},
+                    {left: "\\[", right: "\\]", display: true}
+                ]
+        });
+    });
+</script>
+</script>
+</body>
+</html>

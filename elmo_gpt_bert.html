@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>模板</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@3.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css"
+          integrity="sha384-AfEj0r4/OFrOo5t7NnNe46zW/tFgW6x/bCJG8FqQCEo3+Aro6EYUG4+cU+KJWu/X" crossorigin="anonymous">
+</head>
+<body>
+<div class="container">
+    <h1 class="text-center text-primary">ELMo + Open GPT + BERT</h1>
+    <p class="text-center">
+        <a href="index.html"><span class="glyphicon glyphicon-home"></span>首页</a>&nbsp;&nbsp;
+        <span>create: 2020-08-31 17:35:04</span>
+    </p>
+    <h3>引子——上下文词表征</h3>
+    <p>
+        由于文字是符号而不是数字，所以词表征（也可称词向量）一直是NLP固有的一个痛点。特别是当人们发现质量高的词向量对下游几乎所有任务的模型性能均有提升时，训练出更高质量的词向量好像比研究各个任务对应的模型更有价值。所以关于词向量的研究浪潮从未褪去。</p>
+    <p>前文我们提到过以word2vec和Glove为代表的词向量训练方法，同时也指出词向量是语言模型孵化出来的。尽管这些词向量可以描绘出语义相似度和语言线性规律（linguistic linear
+        regularities），但是它们始终是静态的，<strong>无法刻画出一词多义这种语言特性</strong>。</p>
+    <p>基于此，我们希望每个字符对应的词向量不是一成不变的，而是可以根据上下文灵活调整。于是便有了上下文词表征（contextualized word
+        representation，也可称情景词表征），其中本文要介绍的第一个模型ELMo就是语境词表征的代表。</p>
+    <h3>ELMo</h3>
+    <blockquote><p> Deep contexualized word representations. NAACL 2018 best paper</p></blockquote>
+    <p>ELMo的模型结构如下图所示，包含两个反向的LSTM，每个LSTM是多层堆叠、依次传递的（下一层的输出是上一层的输入）。</p>
+    <p>
+    <div><img src="images/elmo_architecture.png" alt="image" class="img-responsive center-block"/></div>
+    </p><p>正向的LSTM根据上文来预测当前字符：</p>
+    <p>$$ p(t_1, t_2, ..., t_N) = \prod_{k=1}^{N}p(t_k|t_1, t_2, ..., t_{k-1}) $$</p>
+    <p>反向的LSTM根据下文来预测当前字符：</p>
+    <p>$$ p(t_1, t_2, ..., t_N) = \prod_{k=1}^{N}p(t_k|t_{k+1}, t_{k+2}, ..., t_{N}) $$</p>
+    <p>
+        假设输入序列长度为$N$，LSTM有$L$层，那么在位置$k$处，可以得到$L$个正向隐藏状态$\overrightarrow{h}_{k,j}^{LM}$和$L$个反向隐藏状态$\overrightarrow{h}_{k,j}^{LM}$。</p>
+    <h4>训练</h4>
+    <p>
+        不管是正向的LSTM还是反向的LSTM，都取最上层的隐藏状态（也就是$\overrightarrow{h}_{k,L}^{LM}$和$\overleftarrow{h}_{k,L}^{LM}$）来预测当前字符，损失函数如下：</p>
+    <p>$$ \sum_{k=1}^{N}(\log p(t_k|t_1, ..., t_{k-1}; \theta_x, \overrightarrow {\theta}_{LSTM}, \theta_s) + \log
+        p(t_k|t_{k+1}, ..., t_{N}; \theta_x, \overleftarrow {\theta}_{LSTM}, \theta_s) ) $$</p>
+    <p>$\theta_x$和$\theta_s$分别表示字符嵌入、softmax层的参数，二者在正反向LSTM中共用。</p>
+    <blockquote><p> 更准确地说，这里的softmax层是linear+softmax层，输入维度lstm hidden size，输出维度是vocab size</p></blockquote>
+    <h4>生成词向量</h4>
+    <p>按照往常的规律，$\theta_x$或者最顶层的隐藏状态就应该就是词向量了。但是ELMo和其他上下文词表征不同的就是，它把每个层的隐藏状态都看成是表征的组成部分。</p>
+    <blockquote><p> 后面的实验结果也表明，线性组合的方式确实比直接取最上层隐藏状态的效果好</p></blockquote>
+    <p>这样，在每个位置$k$上，包括$\theta(x_k)$（看成第0层LSTM的隐藏状态），总共有$2L+1$个表征：</p>
+    <p>$$ \begin{aligned} R_k & = \{x_k^{LM}, \overrightarrow h_{k,j}^{LM}, \overleftarrow h_{k,j}^{LM}|j=1,...,L\}\\ &
+        = \{h_{k,j}^{LM}|j=0, ..., L\} \end{aligned} $$</p>
+    <p>在面向下游任务时，将其进行线性组合便可得到最终的ELMo上下文词表征$R_k$。</p>
+    <p>组合的方式和不同的下游任务有关：</p>
+    <p>$$ ELMo_k^{task} = E(R_k;\theta^{task}) = \gamma^{task}\sum_{j=0}^L s_j^{task}h_{k,j}^{LM} $$</p>
+    <p>参数$s^{task}$是softmax归一化权重，$\gamma^{task}$允许对整个ELMo模型词向量进行缩放（有助于加速优化）。</p><h4>实验效果</h4>
+    <p>使用ELMo词向量在6项任务上取得了SOTA：</p>
+    <p>
+    <div><img src="images/elmo_experiment_1.png" alt="image" class="img-responsive center-block"/></div>
+    </p><p>可以看出ELMo词向量确实对NLP任务的提升确实明显。</p><h4>最后</h4>
+    <p>ELMo的架构图并不是论文中给出的，是BERT论文中给出的，但是我一直觉得有问题，按照我的理解应该是这样的：</p>
+    <p>
+    <div><img src="images/elmo_true_architecture.png" alt="image" class="img-responsive center-block"/></div>
+    </p><p><br></p>
+    <p>ELMo被评为NAACL
+        2018的最佳论文，引起了极大的轰动，因为它刷新了多项NLP任务的成绩。记得当时导师当时在实验室也是对这个工作进行了着重强调。然而，从结构上看，ELMo并不是真正的双向语言模型，只是把正向和方向结合在一起而已。和传统语言模型相比，ELMo把语言模型每个层的隐藏状态取出来，通过线性组合得到最终的词向量。在下游任务中，ELMo词向量将被输入到下游任务模型中去，并在监督语料上训练，从而得到进一步调整。</p>
+    <p>整个过程差不多是这样的：训练语言模型->取出词向量->将词向量输入到下游模型->继续训练。</p>
+    <p>可以看到这个过程有点繁琐，于是很自然地就会想到，可不可以把中间的取出词向量的过程省略掉。干脆下游监督模型直接沿用已有的预训练模型，这就是“预训练+微调”。</p>
+    <h3>GPT</h3>
+    <p>
+        GPT提出通过预训练+微调的方式，来提升NLP任务的成绩。其中预训练是在大量的文本语料上进行无监督训练，微调是在少量的标注语料上进行监督训练。并且，从预训练到微调，模型只需要做很小的改变。预训练+微调实现了一个模型通吃多个任务，是一种很好的迁移学习。</p>
+    <h4>预训练</h4>
+    <p>GPT语言模型的结构如下图所示：</p>
+    <p>
+    <div><img src="images/open_gpt_architecture.png" alt="gpt_architecture" class="img-responsive center-block"/>
+    </div>
+    </p>
+    <blockquote><p> 这张图和ELMo一样，画的有问题，具体还是看公式吧。</p></blockquote>
+    <p>GPT的基本神经单元不再是LSTM，而是Transformer。并且GPT是单向的，即只会根据上文来预测下文。给定一个包含了句子$U=\{u_1, ...,
+        u_n\}$的语料库，语言模型的目标函数是为了最小化下面的对数似然：</p>
+    <p>$$ L_1(U) = \sum_{i}\log P(u_i|u_{i-k}, ..., u_{i-1}; \theta) $$</p>
+    <p>这里的$k$就是上下文的窗口大小。</p>
+    <p>具体地，因为使用了Transformer，所以整个计算过程基本和Transformer一致，除了最后加上了一个线性层来预测下一个字符：</p>
+    <p>$$ h_0 = UW_e + W_p\\ h_l = transformer\_block(h_{l-1}) \quad \forall i \in [1, n]\\ P(u) = softmax(h_nW^T_e)\\
+        $$</p>
+    <p>$U=(u_{-k}, ..., u_{-1})$是token的上下文向量，$n$是层数，$W_e$是token的嵌入矩阵，$W_p$是位置嵌入矩阵。</p><h4>微调</h4>
+    <p>在预训练得到的模型基础上做微调，任务基于已标注的语料库C，其中每条数据包含一个token序列$x^1, ..., x^m$和一个标签$y$.</p>
+    <p>然后将最后一个transformer块的激活结果$h_l^m$输入到一个<strong>附加的线性输出层</strong>来预测y:</p>
+    <p>$$ P(y|x^1, ..., x^m) = softmax(h_l^m W_y) $$</p>
+    <p>以上过程的损失函数：</p>
+    <p>$$ L_2(C) = \sum_{(x,y)} \log P(y|x^1, ..., x^m) $$</p>
+    <p>GPT还提出，如果在微调时将预训练的损失函数加过来作为辅助目标函数，既可以提高监督模型的泛化能力，还可以加速收敛。于是将这两个损失函数结合:</p>
+    <p>$$ L_3(C) = L_2(C) + \lambda * L_1(C) $$</p>
+    <p>这里的$\lambda$是权重.</p><h4>不同任务的输入转换</h4>
+    <p>
+    <div><img src="images/open_gpt_input_transformation.png" alt="gpt_input_transformation"
+              class="img-responsive center-block"/></div>
+    </p><p>这部分的细节不展开了，基本上图中描述的很清楚。需要注意的是：在预训练的时候，使用左边的token prediction线性层；但是在微调时，就使用右侧的task classifier。</p><h4>实验结果</h4>
+    <p>GPT的实验结果相比ELMo更胜一筹，12个任务上有9项都达到了SOTA。</p>
+    <h3>BERT</h3>
+    <blockquote><p> BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding</p></blockquote>
+    <p>
+        GPT成功证明了Transformer的强大。于是BERT结合了ELMo和GPT提出基于Transformer的深度双向语言模型。之前也说过，ELMo的双向是假的，它只是把两个损失函数加在一起（类似多任务训练，前向和反向是分开的两个任务），而BERT则是真正的双向语言模型：它是根据上下文预测当前位置的字符。</p>
+    <p>$$ p(t_1, t_2, ..., t_N) = \prod_{k=1}^{N}p(t_k|t_1, ..., t_{k-1}, t_{k+1}, ..., t_{k-1}) $$</p><h5></h5>
+    <p>在模型上，BERT几乎没有任何创新，因为它只是套用了12层的Transformer。</p>
+    <p>
+    <div><img src="images/bert_architecture.png" alt="image" class="img-responsive center-block"/></div>
+    </p>
+    <blockquote><p> BERT把三个模型的图都画出来了，可惜，只有自己的这个图我才觉得画的是对的。</p></blockquote>
+    <h4>Masked Language Model, MLM</h4>
+    <p>
+        由于采用了Transformer的结构，如果根据上下文来预测当前字符，这样会有一个问题，就是偷窥的问题！因为当前位置的输入是用来构成其他位置的上下文的，但是同时，当前位置的输出也会看到当前位置的输入，这样的预测就没有任何意义了。</p>
+    <p>BERT采用一个很巧妙的办法，即采用Masked Language LM预训练任务，该任务随机把输入序列的一些字符掩盖掉，这样就可以在预训练过程中通过预测被掩盖的字符来实现语言模型的训练。</p>
+    <blockquote><p> 这样其实还是有问题的，那就是预训练有[MASK]，但是微调的时候，不管做什么监督任务，输入都是没有[MASK]的。当然啦，这个问题就留给后面的预训练模型来解决吧。</p></blockquote>
+    <h4>输入转换</h4>
+    <p>在输入上，因为要兼顾到下游不同类型的任务，所以BERT也做了输入转换，只不过比GPT更简单些。</p>
+    <p>考虑到NLP的任务其实是可以分为字符级、句子级、句子对级三种的。</p>
+    <p>字符级很好解决，对于句子级任务，BERT通过引入特殊字符[CLS]来完成句子级的任务；而对于句子对的任务，则是通过[SEP]来拼接不同的句子，同时为了更好的区分，在GPT原来的两部分输入上，加上了segment
+        embedding来区分句子。</p>
+    <p>
+    <div><img src="images/bert_input_transformation.png" alt="image" class="img-responsive center-block"/></div>
+    </p><h4>Next Sentence Prediction, NSP</h4>
+    <p>既然要兼顾句子对的任务，自然也就要在预训练的时候同样对句子对进行预训练。于是BERT在预训练中加入了一个NSP预训练任务，使得模型能够学习到句子对级别上的知识。</p><h4>微调</h4>
+    <p>通过输入转换和两项预训练任务，BERT在大量文本上可以完成无监督的预训练。在微调时，同样，我们希望能够减少模型的改动。BERT的微调也是非常巧妙的。</p>
+    <p>首先是阅读理解：</p>
+    <p>
+    <div><img src="images/bert_finetuning_mrc.png" alt="image" class="img-responsive center-block"/></div>
+    </p><p>
+    <div><img src="images/bert_finetuning_others.png" alt="image" class="img-responsive center-block"/></div>
+    </p><p>上面的图，把BERT微调的一些改动说得很清楚了。就是加线性层就可以了。</p><h4>实验结果</h4>
+    <p>在GLUE上，八项全部第一。</p>
+    <p>
+    <div><img src="images/bert_glue_exp_res.png" alt="image" class="img-responsive center-block"/></div>
+    </p><p>还有SQuAD 1.0/SQuAD 2.0以及SWAG三个任务上也是刷新了SOTA。</p>
+    <p>11项任务的成绩刷新，使得BERT名声大噪，一时成为NLP明星之作。</p>
+    <h3>结语</h3>
+    <p>ELMo、Open GPT和BERT是同时代的三个预训练模型，使得2018年注定是NLP历史上一个不平凡的一年。后来的预训练模型如同雨后春笋般涌现，但是，这三位先驱永远光芒万丈。</p>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/jquery@1.12.4/dist/jquery.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@3.3.7/dist/js/bootstrap.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.js"
+        integrity="sha384-g7c+Jr9ZivxKLnZTDUhnkOnsh30B4H0rpLUpJ4jAIKs4fnJI+sEnkvrMWph2EDg4"
+        crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/contrib/auto-render.min.js"
+        integrity="sha384-mll67QQFJfxn0IYznZYonOWZ644AWYC+Pt2cHqMaRhXVrursRwvLnLaebdGIlYNa"
+        crossorigin="anonymous"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        renderMathInElement(document.body, {
+            delimiters:
+                [
+                    {left: "$$", right: "$$", display: true},
+                    {left: "$", right: "$", display: false},
+                    {left: "\\(", right: "\\)", display: false},
+                    {left: "\\[", right: "\\]", display: true}
+                ]
+        });
+    });
+</script>
+</script>
+</body>
+</html>

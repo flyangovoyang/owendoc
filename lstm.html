@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>模板</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@3.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css"
+          integrity="sha384-AfEj0r4/OFrOo5t7NnNe46zW/tFgW6x/bCJG8FqQCEo3+Aro6EYUG4+cU+KJWu/X" crossorigin="anonymous">
+</head>
+<body>
+<div class="container">
+    <div class="col-md-9" role="main">
+        <div class="text-center">
+            <h1 class="text-primary">循环神经网络之LSTM</h1>
+            <p>create: 2020-08-19</p>
+        </div>
+        <hr/>
+        <p>本文主要记录长短时记忆神经网络（Long-short Term Memory Network,
+            LSTM）。除了在探讨LSTM内部细节外，一般所说的LSTM并不是指某个具体的模型，而是代表着以LSTM为基础的所有模型变体。</p>
+        <h3 id="title-one">1. LSTM神经单元</h3>
+        <p>LSTM在RNN的基础上引入了遗忘门、输入门和输出门，三个门机制都通过0到1的系数来控制LSTM数据的流动。</p>
+        <p>输入包括：</p>
+        <ul>
+            <li>上一个时刻的细胞状态$C_{t-1}$</li>
+            <li>上一个时刻的隐藏状态$h_{t-1}$</li>
+            <li>当前时刻的输入$x_t$</li>
+        </ul>
+        <div class="text-center">
+            <img src="images/lstm_cell.png" width="48%">
+        </div>
+        <p>计算过程如下：</p>
+
+        <p>
+            $$
+            f_t = \sigma(W_f \cdot [h_{t-1};x_t] + b_f)\\
+            i_t = \sigma(W_i \cdot [h_{t-1};x_t] + b_i)\\
+            o_t = \sigma(W_o \cdot [h_{t-1};x_t] + b_o)\\
+            \tilde C_t = tanh(W_c \cdot [h_{t-1};x_t] + b_c)\\
+            C_t = f_t * C_{t-1} + i_t * \tilde C_t\\
+            h_t = o_t * tanh(C_t)
+            $$
+        </p>
+
+        <p>细胞状态像个传送带一样，负责携带长期依赖信息。</p>
+
+        <p>结论：</p>
+
+        <ol>
+            <li>
+                每个LSTM单元的输出包含隐藏状态和细胞状态，token级任务一般使用每个时刻的隐藏状态，sentence级的任务只需要返回最后一个时刻的隐藏状态即可；而细胞状态一般用来初始化下一个循环神经网络，从而继续训练其他任务（比如Encoder-Decoder）；
+            </li>
+            <li>上式中的<span class="bg-gray">;</span>表示的是按照行拼接，这是一种简要的表示，详细展开的式子见下文；</li>
+            <li>在上面这种表示形式下，LSTM的参数由四个权重$W$和四个偏置$b$组成。</li>
+        </ol>
+
+        <h3 id="title-two">2. LSTM的方向和层数</h3>
+
+        <p>LSTM所有的变体主要来源于方向和层数这两种设置。</p>
+
+        <p><strong>方向</strong>，主要代表就是双向LSTM（Bidirectional LSTM,
+            BiLSTM）。以最简单的BiLSTM为例，任一时刻的输出是由前向LSTM和反向LSTM的输出拼接而成的，那么每个输出神经单元的维度就是<span
+                    class="bg-gray">2*hidden_size</span>，如下图所示。</p>
+
+        <div class="text-center">
+            <img src="images/bilstm.png" alt="bilstm" width="40%">
+        </div>
+
+        <p><strong>层数</strong>，将多个LSTM层<sup><a href="#fn1" id="refn1">[1]</a></sup>进行堆积，下一个LSTM层输出的隐藏状态会被输入到上一个LSTM层，并且在时间上一一对应。同时，传递过程中，还会使用到dropout。
+        </p>
+
+        <div class="text-center">
+            <img src="images/multilayer_lstm.png" alt="multilayer_lstm" width="40%">
+        </div>
+
+        <h3 id="title-three">3. 深度学习框架中的LSTM层</h3>
+
+        <p>不同深度框架都是相通的，以pytorch为例，看看LSTM的实现细节。</p>
+
+        <h4>3.1 实例化LSTM层的参数</h4>
+
+        <ul>
+            <li><span class="bg-gray">input_size</span> 输入的特征数</li>
+            <li><span class="bg-gray">hidden_size</span> 隐藏状态的特征数</li>
+            <li><span class="bg-gray">num_layers</span> 循环神经网络的层数</li>
+            <li><span class="bg-gray">bias</span> 是否使用偏置（`b_ih`和`b_hh`），默认是`True`</li>
+            <li><span class="bg-gray">batch_first</span> 是否batch优先（batch, seq, feature），默认为`False`</li>
+            <li><span class="bg-gray">dropout</span> 每个非输出层<sup><a href="#fn2" id="refn2">[2]</a></sup>的输出的dropout比例，默认为`0`
+            </li>
+            <li><span class="bg-gray">bidirectional</span> 如果为`True`，则为双向LSTM，默认为`False`</li>
+        </ul>
+
+        <p>注意：<span class="bg-gray">batch_first</span>的默认值是False
+
+        <h4>3.2 LSTM层返回的参数</h4>
+
+        <p>输出<span class="bg-gray">output, (h_n, c_n)</span></p>
+
+        <ul>
+            <li><span class="bg-gray">output</span>的尺寸是[seq_len, batch, num_directions*hidden_size]，表示每个时刻的隐藏状态。</li>
+            <li><span class="bg-gray">h_n</span>表示最后一个时刻的隐藏状态[num_layers*num_directions, batch, hidden_size]；</li>
+            <li><span class="bg-gray">c_n</span>表示最终的细胞状态[num_layers*num_directional, batch, hidden_size]。</li>
+        </ul>
+
+        <h4>3.3 LSTM计算过程和内部参数</h4>
+
+        <p>
+            $$
+            \begin{array}{ll} \\
+            i_t = \sigma(W_{ii} x_t + b_{ii} + W_{hi} h_{t-1} + b_{hi}) \\
+            f_t = \sigma(W_{if} x_t + b_{if} + W_{hf} h_{t-1} + b_{hf}) \\
+            g_t = \tanh(W_{ig} x_t + b_{ig} + W_{hg} h_{t-1} + b_{hg}) \\
+            o_t = \sigma(W_{io} x_t + b_{io} + W_{ho} h_{t-1} + b_{ho}) \\
+            c_t = f_t \odot c_{t-1} + i_t \odot g_t \\
+            h_t = o_t \odot \tanh(c_t) \\
+            \end{array}
+            $$
+        </p>
+
+        <p>可以看出，这里把上文的参数拆开了，更加详细地展示了LSTM神经单元内部的计算过程。</p>
+        <p>在多层LSTM中，第$l$层的输入$x_t^{(l)}$ $(l \geq 2)$是之前层隐藏状态$h_t^{(l-1)}$乘上dropout $\delta_t^{(l-1)}$。</p>
+        <p>另外还需要注意的是，pytorch中LSTM的参数包含<span class="bg-gray">weight_ih_lx</span>和<span
+                class="bg-gray">weight_hh_lx</span>，前者包含了所有和输入$x$相乘的权重参数(input-hidden)，即$W_ii|W_if|W_ig|W_io$，后者则是所有和隐藏状态相乘的权重参数(hidden-hidden)，即$W_hi|W_hf|W_hg|W_ho$。
+        </p>
+
+        <p>$x$表示数字，比如<span class="bg-gray">weight_ih_l2</span>和<span class="bg-gray">weight_hh_l2</span>。如果LSTM的总层数是$n$，那么$x$的取值就是从$0$开始一直到$n-1$，这样就总共有个$2n$个weight。
+        </p>
+
+        <p>如果LSTM是双向的，则每个<span class="bg-gray">weight_ih_lx</span>和<span class="bg-gray">weight_hh_lx</span>还有对应的reverse版本，形式上就是<span
+                class="bg-gray">weight_ih_lx_reverse</span>。这样就又有$2n$个reverse weight。</p>
+
+        <h4>3.4 参数的size</h4>
+
+        <ul>
+            <li><span class="bg-gray">weight_ih_lx</span>：第0层（最下方的输入层）<span class="bg-gray">weight_ih_lx</span>的size是[4*hidden_size,
+                input_size]，而对于其它层，它的size是[4*hidden_size, num_directions*hidden_size]
+            </li>
+            <li><span class="bg-gray">weight_hh_lx</span>：[4*hidden_size, hidden_size]</li>
+            <li><span class="bg-gray">bias_ih_lx</span>：[4*hidden_size]</li>
+            <li><span class="bg-gray">bias_hh_lx</span>：[4*hidden_size]</li>
+        </ul>
+
+        <p>第$0$层LSTM就会把input_size转成hidden_size，所以后面层输入的大小都是hidden_size了。</p>
+
+        <h4>3.5 参数的初始化</h4>
+
+        <p>所有参数（包括weights和biases）的初始化都遵循$\mathcal U = (-\sqrt k, \sqrt k), \enspace k=\frac{1}{hidden_size}$.</p>
+
+        <h3 id="title-four">4. LSTM变体之peelhole connection</h3>
+
+        <div class="text-center">
+            <img src="images/peelhole_connection_lstm.png" alt="peelhole_connection_lstm">
+        </div>
+
+        <p>细胞状态参与了遗忘门，输入门还有输出门。于是得到新的计算公式：</p>
+
+        <p>
+            $$
+            \begin{aligned}
+            f_t & = \sigma(W_f \cdot [C_{t-1}, h_{t-1}, x_t] + b_f)\\
+            i_t & = \sigma(W_i \cdot [C_{t-1}, h_{t-1}, x_t] + b_i)\\
+            o_t & = \sigma(W_o \cdot [C_t, h_{t-1}, x_t] + b_o)
+            \end{aligned}
+            $$
+        </p>
+
+        <h3 id="title-five">5. 最后</h3>
+
+        <p>一些相关的参考资料：</p>
+
+        <ol>
+            <li>讲解LSTM博客：<a href="http://colah.github.io/posts/2015-08-Understanding-LSTMs/">http://colah.github.io/posts/2015-08-Understanding-LSTMs/</a>
+            </li>
+            <li>BiLSTM论文：<a href="papers/Bidirectional LSTM-CRF Models for Sequence Tagging.pdf">Bidirectional LSTM-CRF
+                Models for Sequence Tagging</a></li>
+        </ol>
+    </div>
+    <div class="col-md-3" role="complementary">
+        <!-- affix固定侧边导航 -->
+        <nav class="hidden-print hidden-xs hidden-sm affix">
+            <ul class="content ">
+                <li><strong>目录</strong></li>
+                <li><a href="#title-one">1. LSTM神经单元</a></li>
+                <li><a href="#title-two">2. LSTM的方向和层数</a></li>
+                <li><a href="#title-three">3. 深度学习框架中的LSTM层</a></li>
+                <li><a href="#title-four">4. LSTM变体之peelhole connection</a></li>
+                <li><a href="#title-five">5. 最后</a></li>
+            </ul>
+            <ul>
+                <li><a href="#top">返回顶部</a></li>
+                <li><a id="top" href="index.html">返回首页</a></li>
+            </ul>
+        </nav>
+    </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/jquery@1.12.4/dist/jquery.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@3.3.7/dist/js/bootstrap.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.js"
+        integrity="sha384-g7c+Jr9ZivxKLnZTDUhnkOnsh30B4H0rpLUpJ4jAIKs4fnJI+sEnkvrMWph2EDg4"
+        crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/contrib/auto-render.min.js"
+        integrity="sha384-mll67QQFJfxn0IYznZYonOWZ644AWYC+Pt2cHqMaRhXVrursRwvLnLaebdGIlYNa"
+        crossorigin="anonymous"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        renderMathInElement(document.body, {
+            delimiters:
+                [
+                    {left: "$$", right: "$$", display: true},
+                    {left: "$", right: "$", display: false},
+                    {left: "\\(", right: "\\)", display: false},
+                    {left: "\\[", right: "\\]", display: true}
+                ]
+        });
+    });
+</script>
+</script>
+</body>
+</html>

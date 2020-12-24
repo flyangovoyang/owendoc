@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>模板</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@3.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css"
+          integrity="sha384-AfEj0r4/OFrOo5t7NnNe46zW/tFgW6x/bCJG8FqQCEo3+Aro6EYUG4+cU+KJWu/X" crossorigin="anonymous">
+</head>
+<body>
+<div class="container">
+    <h1 class="text-center text-primary">Word2Vec</h1>
+    <p class="text-center">
+        <a href="index.html"><span class="glyphicon glyphicon-home"></span></a>&nbsp;&nbsp;
+        <span>create: 2020-08-26 23:18:35</span>
+    </p>
+    <h3>词袋(bag-of-words)模型和独热表示(one-hot vector)</h3>
+    <p>定义一个词典，大小为|V|，那么词袋模型就可以为文本序列生成一个由0和1构成的独热向量(one-hot vector)。向量第i个位置取值为1，表示词典中第i个词出现在当前文本中。</p>
+    <p>可是，独热表示存在很多问题：</p>
+    <ul>
+        <li>独热表示维度非常高，并且十分稀疏。由于词典非常大（几万到几十万，甚至更大），独热表示非常稀疏；</li>
+        <li>独热表示<strong>丢失了文本序列中的词序信息</strong>。即相同词构成的句子的表征相同；</li>
+        <li><strong>无法度量词与词之间的相似度</strong>，即只包含一个词的文本序列之间的距离都是一样的。</li>
+    </ul>
+    <h3>语言模型和分布式表示(distributed representation)</h3>
+    <p>分布式表示使用一个低维的稠密的向量来表示词，这样可以大幅降低维度，并且还可以通过词向量之间的距离来度量词与词之间的相似度。</p>
+    <ul>
+        <li>低维稠密：分布式表示的维度可以降低到50到100，极大地降低了计算量，缺点是：<strong>缺乏解释性</strong>，即每个维度的含义以及取值大小不得而知。</li>
+        <li>相似度：在低维向量空间中，man、woman彼此靠得比较近，China、America彼此的距离比较接近，这样近义词都靠近彼此。另外，还可以保证词向量的线性规律：$man-king \approx
+            woman-queen$
+        </li>
+    </ul>
+    <p>暂时只考虑统计语言模型，它其实有两个功能：一是可以计算出文本序列的联合概率（主要功能），另一个是得出词的分布式表示。</p>
+    <p>假设句子$s$由若干个词组成$s=(w_1, w_2, ...)$，那么该句子出现的概率，就是各个词出现概率的联合概率：</p>
+    <p>$$ p(s) = p(w_1, w_2, ...) = p(w_1)p(w_2|w_1)p(w_3|w_1, w_2) \cdot \cdots $$</p>
+    <p>这就是语言模型的一般形式，可以通过每个词的概率计算整个句子的概率。但是，由于词片段太多，函数的参数空间非常大，同时根据极大似然估计得到的各个词片段的条件概率几乎为0，所以一般形式的语言模型几乎是不可能实现的。</p>
+    <p>N-gram提出引入了马尔科夫假设，即假设任意一个词出现的概率之和前n-1个词有关，这里引用下bengio的公式：</p>
+    <p>$$ p(w_t|w_1^{t-1}) = p(w_t|w_{t-n+1}^{t-1}) $$</p>
+    <p>其中$w_1^{t-1}$表示从$w_1$到$w_{t-1}$.</p>
+    <p>这样便出现了如下三种常见的n元语法模型：</p>
+    <ul>
+        <li>一元语法模型(unigram) $p(w_1, w_2, ...) = p(w_1)p(w_2)p(w_3) \cdot \cdots$</li>
+        <li>二元语法模型(bigram) $p(w_1, w_2, ...) = p(w_1)p(w_2|w_1)p(w_3|w_2) \cdot \cdots$</li>
+        <li>三元语法模型(trigram) $p(w_1, w_2, ...) = p(w_1)p(w_2|w_1)p(w_3|w_1, w_2)p(w_4|w_2, w_3) \cdot \cdots$</li>
+    </ul>
+    <p>为了避免参数太多，n最多只取到3。</p>
+    <p><strong>语言模型借助内部的分布式表示来预测句子中的下一个词，所以，通过训练不断提高语言模型的预测能力就是在学习其内部的分布式表示</strong>。</p>
+    <p>至此，语言模型的功能作用已经明确了。设计一个语言模型来得到高质量的词表征，成为了自然语言处理经久不衰的研究热点。</p>
+    <h3>SVD</h3>
+    <h3>神经统计语言模型（Neural Probabilistic Language Model, NNLM）</h3>
+    <p>Bengio于2003年提出NNLM，模型为函数：</p>
+    <p>$$ \begin{aligned} f(i, w_{t-1}, ..., w_{t-n+1}) = g(i, C(w_{t-1}), ..., C(w_{t-n+1})) \end{aligned} $$</p>
+    <p>如下图所示，模型可分为输入层、映射层、隐藏层和输出层。</p>
+    <img src="images/nnlm.png">image</img>
+    <p><strong>（1）输入层</strong></p>
+    <p>输入为上下文中每个词在词典中的id；</p>
+    <p><strong>（2）映射层 projection layer</strong></p>
+    <p>根据输入的<code>index</code>在权重矩阵$C \in \R^{|V| \times d}$对应列取出初始的词向量，<strong>拼接后</strong>输出：</p>
+    <p>$$ x = (C(w_{t-n+1}), ..., C(w_{t-1})) $$</p>
+    <p><strong>（3）隐藏层</strong></p>
+    <p><strong>映射层的输出将被连接成长度为$(n-1)d$的向量</strong>，隐藏层单元个数为$h$</p>
+    <p>$$ out = tanh(Hx + b_1) $$</p>
+    <p>其中，参数$H \in \R^{(n-1)d \times h}$，偏置$b_1 \in \R^{h}$。</p>
+    <p><strong>（4）输出层</strong></p>
+    <p><strong>图中虚线表示</strong>：映射层的输出可能会<strong>选择性地</strong>作为输出层的输入，即映射层可能和输出层相连。</p>
+    <p>输出层的输出大小肯定是$|V|$的，即</p>
+    <p>$$ y = Utanh(Hx + b_1) + Wx + b_2 $$</p>
+    <p>其中权重$U \in \R^{h \times |V|}$，而$W \in R^{(n-1)d \times |V|}$，$b_2 \in \R^{|V|}$。</p>
+    <p>整个模型的参数为：</p>
+    <p>$$ \begin{aligned} \theta & = (W, U, H, C, b_1, b_2)\\ & = (n-1)d \times |V| + h \times |V| + (n-1)d \times h +
+        |V| \times d + h + |V|\\ & = |V| [(n-1)d + h + d + 1 ] + h[(n-1)d + 1] \end{aligned} $$</p>
+    <p>其中绝对主导的就是$|V|(n-1)d$了。</p>
+    <p>$$ L = \frac{1}{T}\sum_t \log f(w_t, w_{t-1}, ..., w_{t-n+1}; \theta) + R(\theta) $$</p>
+    <p>其中$R(\theta)$是正则化项，本文实验中为作用在神经网络权重和矩阵C上的权重衰减惩罚。</p>
+    <p>这个模型是深度学习最简单的DNN构建的语言模型，虽然可行，但是参数太多了，并且计算量非常大。</p>
+    <h3>gensim</h3>
+    <p>gensim是一个包含了众多词向量模型的算法包，比如word2vec、Doc2Vec、FastText等。</p>
+    <p>
+        本文主要探讨word2vec的一些实践，主要涉及<code>gensim.models.Word2Vec</code>和<code>gensim.models.keyedvectors.Word2VecKeyedVectors</code>两个类。
+    </p>
+    <p>gensim包允许</p>
+    <ul>
+        <li>流式训练词向量（从硬盘中分批加载数据）</li>
+        <li>训练后保存模型可以进行二次训练</li>
+    </ul>
+    <h3>生成模型并训练</h3>
+    <pre>
+from gensim.models import Word2Vec
+
+
+# 模型首次创建并训练
+model = Word2Vec(sentences, window=10, size=100, sg=1, hs=0, negative=5, min_count=10, iter=10)
+
+# 加载模型并进行二次训练
+model = Word2Vec.load(filepath)
+model.train([["hello", "world"]], total_examples=1, epochs=1)</pre>
+    <p>模型的词向量保存在了KeyedVectors中，可以通过<code>model.wv['computer']</code>获取词向量。</p>
+    <h3>保存模型</h3>
+    <p>保存模型的两种方式：</p>
+    <ul>
+        <li>只保存词向量，可以拿到词嵌入文件，也可以进行一些相似度计算；</li>
+        <li>保存整个模型，由于保存了模型的参数，所以加载后可以继续训练；</li>
+    </ul>
+    <p>词向量保存在model.wv.KeyedVectors实例中，</p>
+    <pre>
+# 整个模型的保存
+model.save(fname)
+
+# 只保存词向量文件
+model.wv.save_word2vec_format(fname, fvocab=None, binary=False)</pre>
+    <p>binary控制是否以二进制保存，如果为False就可以得到常规的词向量文件了。</p>
+    <h3>相似度计算</h3>
+    <p>由于只需要词向量就可以进行相似度计算，所以仅加载词向量：</p>
+    <pre>
+word_vectors = gensim.models.keyedvectors.Word2VecKeyedVectors.load_word2vec_format('model/word2vec.iter5')</pre>
+    <p>下面就可以调用方法来进行一些计算：</p>
+    <ul>
+        <li><code>words_closer_than(w1, w2)</code> 返回所有w3，满足distance(w1, w3) < distance(w1, w2)</li>
+        <li><code>most_similar(positive, negative)</code></li>
+        <li><code>most_similar_cosmul(positive, negative, topn=10)</code></li>
+        <li><code>similar_by_word(word, topn=10)</code> 找到和word最相似的前N个词</li>
+        <li><code>similar_by_vector(vector, topn=10)</code> 找到和vector最相似的前N个词</li>
+        <li><code>similarity_matrix(dictionary)</code></li>
+        <li><code>wmdistance(document1, document2)</code></li>
+        <li><code>doesnt_match(words)</code></li>
+        <li><code>cosine_similarity(vector_1, vectors_all)</code></li>
+        <li><code>distances()</code></li>
+        <li><code>most_similar_to_given(entity1, entities_list)</code></li>
+    </ul>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/jquery@1.12.4/dist/jquery.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@3.3.7/dist/js/bootstrap.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.js"
+        integrity="sha384-g7c+Jr9ZivxKLnZTDUhnkOnsh30B4H0rpLUpJ4jAIKs4fnJI+sEnkvrMWph2EDg4"
+        crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/contrib/auto-render.min.js"
+        integrity="sha384-mll67QQFJfxn0IYznZYonOWZ644AWYC+Pt2cHqMaRhXVrursRwvLnLaebdGIlYNa"
+        crossorigin="anonymous"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        renderMathInElement(document.body, {
+            delimiters:
+                [
+                    {left: "$$", right: "$$", display: true},
+                    {left: "$", right: "$", display: false},
+                    {left: "\\(", right: "\\)", display: false},
+                    {left: "\\[", right: "\\]", display: true}
+                ]
+        });
+    });
+</script>
+</script>
+</body>
+</html>
