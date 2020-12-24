@@ -23,7 +23,7 @@ model.fit(train_images,
 
 以`mode.save_weights('save/only_one')`为例，保存的文件由三个组成部分组成：
 
-![img.png](img.png)
+![img.png](images/img.png)
 
 - checkpoint:可以打开看，内容为
 
@@ -45,7 +45,7 @@ model.save('save/only_one')
 
 保存的结果也是三个部分，这里创建了一个文件夹
 
-![img_1.png](img_1.png)
+![img_1.png](images/img_1.png)
 
 - 第一个是assets，空的；
 - 第二个是pb文件(**protobuf二进制文件**)，保存了整个静态图，所以，不再需要py文件了；
