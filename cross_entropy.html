@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>模板</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@3.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css"
+          integrity="sha384-AfEj0r4/OFrOo5t7NnNe46zW/tFgW6x/bCJG8FqQCEo3+Aro6EYUG4+cU+KJWu/X" crossorigin="anonymous">
+</head>
+<body>
+<div class="container">
+    <h1 class="text-primary text-center">交叉熵</h1>
+    <p class="text-center">
+        <span class="glyphicon glyphicon-home"></span> <a href="index.html">返回首页</a>
+        <span class="glyphicon glyphicon-time"></span> 2020-01-04
+    </p>
+    <hr>
+    <h3 class="text-primary">数学公式</h3>
+    <p>交叉熵的公式是</p>
+    <p>
+        $$
+            H(P, Q) = - \sum_i p_i \log q_i
+        $$
+    </p>
+    <p>其中，P是真实的概率分布，Q是预测的概率分布。</p>
+    <p>对于多分类而言，因为p是one-hot向量，所以只有正确标签$i$对应的两项相乘，其余项都变成零了。</p>
+    <p>
+        $$
+            loss(p, q) = - p_i \log q_i
+        $$
+    </p>
+    <p>也就是说，<span class="red bold">通过交叉熵计算损失值的时候，我们只会关心预测概率分布中正确标签对应的概率值，具体是通过负对数将其压缩到$[0, +\infty)$的区间。</span></p>
+    <h3 class="text-primary">Pytorch中的CrossEntropyLoss</h3>
+    <p>Pytorch中的交叉熵在使用的时候，接受input和target两个参数，input是未归一化处理的预测概率分布，而target是正确答案对应的one-hot向量。</p>
+    <p>和上面的数学公式表示相比，pytorch中的交叉熵损失函数会多出一步softmax，它的损失值计算过程可以拆解成logsoftmax和nllloss两部分</p>
+    <p>
+        $$
+            \begin{aligned}
+                loss(q, i) &= - \log (\frac{exp(q_i)}{\sum_j exp(q_j)})\\
+                            & = - q_i + \log (\sum_j exp(q_j))
+            \end{aligned}
+        $$
+    </p>
+    <p>该式中，外面负号的那层就是NLLLoss，里面的那层就是logsoftmax。</p>
+    <p>实际使用中有几点需要注意：</p>
+    <ol>
+        <li>如果输入存在多个维度，此时$input$需要转置成$[batch\_size, C, d1, d2, ..., d_K]$，如对于序列标注任务，需转置成$[B, C, L]$，其中$C$表示类别总数。</li>
+        <li>
+            <p>对于数据不均衡的现象，可以传入一个长度等于C的一维FloatTensor分别给每个类别赋予权重，此时公式为：</p>
+            <p>
+                $$
+                    loss(q, i) = weight_i * (- q_i + \log (\sum_j exp(q_j)))
+                $$
+            </p>
+        </li>
+    </ol>
+</div>
+<style>.red{color:red;}.bold{font-weight: bold}</style>
+<script src="https://cdn.jsdelivr.net/npm/jquery@1.12.4/dist/jquery.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@3.3.7/dist/js/bootstrap.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.js"
+        integrity="sha384-g7c+Jr9ZivxKLnZTDUhnkOnsh30B4H0rpLUpJ4jAIKs4fnJI+sEnkvrMWph2EDg4"
+        crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/contrib/auto-render.min.js"
+        integrity="sha384-mll67QQFJfxn0IYznZYonOWZ644AWYC+Pt2cHqMaRhXVrursRwvLnLaebdGIlYNa"
+        crossorigin="anonymous"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        renderMathInElement(document.body, {
+            delimiters:
+                [
+                    {left: "$$", right: "$$", display: true},
+                    {left: "$", right: "$", display: false},
+                    {left: "\\(", right: "\\)", display: false},
+                    {left: "\\[", right: "\\]", display: true}
+                ]
+        });
+    });
+</script>
+</script>
+</body>
+</html>
