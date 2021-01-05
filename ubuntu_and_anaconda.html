@@ -13,7 +13,7 @@
 <div class="container">
     <h1 class="text-center text-primary">Ubuntu+ Anaconda + PyPi</h1>
     <p class="text-center">
-        <a href="index.html"><span class="glyphicon glyphicon-home"></span></a>&nbsp;&nbsp;
+        <a href="index.html"><span class="glyphicon glyphicon-home"></span> 返回首页</a>&nbsp;&nbsp;
         <span>create: 2020-12-23</span>&nbsp;&nbsp;
         <span>last update: 2020-12-24</span>
     </p>
@@ -30,9 +30,24 @@ conda deactivate <env_name></pre>
 conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
 conda config --set show_channel_urls yes</pre>
     <h3 class="text-primary">Linux Bash</h3>
-    <h4 class="text-primary">vim的移除和重新安装</h4>
+    <h4 class="text-primary">vim 文本编辑</h4>
+    <h5>移除和重新安装</h5>
     <pre>sudo apt-get remove vim-common
 sudo apt-get install vim</pre>
+    <h5>配置</h5>
+    <p>给当前用户配置，在文件<code>~/.vimrc</code>中配置，配置的注释符不是<code>#</code>而是<code>"</code></p>
+    <pre>set encoding=utf-8
+set tabstop=4
+set autoindent
+set expandtab
+set number
+"set cursorline
+set termencoding=utf-8</pre>
+    <h4 class="text-primary">netstat 查看端口</h4>
+    <p>首先安装</p>
+    <pre>apt-get install net-tools</pre>
+    <p>查看端口占用情况</p>
+    <pre>netstat -anp</pre>
     <h4 class="text-primary">scp</h4>
     <p>文件复制</p>
     <pre># file
@@ -45,32 +60,51 @@ scp -r local_folder remote_username@remote_ip:remote_dir</pre>
     <pre>wc -c <file>  # 统计字节数
 wc -l <file>  # 统计行数
 wc -w <file>  # 统计词数</pre>
+    <h3 class="text-primary">更改ubuntu软件镜像</h3>
+    <p>首先查看系统版本和内核情况</p>
+    <pre>uname -a</pre>
+    <p>然后备份镜像源</p>
+    <pre>sudo cp /etc/apt/sources.list /etc/apt/sources.list.backup</pre>
+    <p>对于18.04 bionic，使用如下镜像源</p>
+    <pre>deb http://mirrors.aliyun.com/ubuntu/ bionic main restricted universe multiverse
+deb-src http://mirrors.aliyun.com/ubuntu/ bionic main restricted universe multiverse
+
+deb http://mirrors.aliyun.com/ubuntu/ bionic-security main restricted universe multiverse
+deb-src http://mirrors.aliyun.com/ubuntu/ bionic-security main restricted universe multiverse
+
+deb http://mirrors.aliyun.com/ubuntu/ bionic-updates main restricted universe multiverse
+deb-src http://mirrors.aliyun.com/ubuntu/ bionic-updates main restricted universe multiverse
+
+deb http://mirrors.aliyun.com/ubuntu/ bionic-proposed main restricted universe multiverse
+deb-src http://mirrors.aliyun.com/ubuntu/ bionic-proposed main restricted universe multiverse
+
+deb http://mirrors.aliyun.com/ubuntu/ bionic-backports main restricted universe multiverse
+deb-src http://mirrors.aliyun.com/ubuntu/ bionic-backports main restricted universe multiverse</pre>
+    <p>随后需要更新</p>
+    <pre>apt-get update
+apt-get upgrade</pre>
+    <h3 class="text-primary">用户管理</h3>
+    <p>修改用户密码</p>
+    <pre>sudo passwd owen</pre>
     <h3 class="text-primary">安装flashplayer</h3>
     <p>下载压缩包，然后解压成<code>/usr/lib/firefox/browser/plugins</code>放在火狐浏览器的插件目录下，该目录为<code>/usr/lib/firefox/browser/plugins</code></p>
     <h3 class="text-primary">安装jdk</h3>
-    <ol>
-        <li>官网下载jdk包，现在需要翻墙注册账号，越来越恶心了。</li>
-        <li>在/usr/local/目录下新建一个文件夹java</li>
-        <li>将压缩包复制到java后解压</li>
-        <li>
-            然后删除安装包，并配置环境变量
-            <pre>sudo vi /etc/profile
+    <p>官网下载jdk包，现在需要翻墙注册账号，越来越恶心了。</p>
+    <p>在/usr/local/目录下新建一个文件夹java</p>
+    <p>将压缩包复制到java后解压</p>
+    <p>然后删除安装包，并配置环境变量</p>
+    <pre>sudo vi /etc/profile
 # 或者
 sudo vi ~/.bashrc</pre>
-            配置内容为：
-            <pre>JAVA_HOME=/usr/local/java/jdk1.8.0_161
+    <p>配置内容为：</p>
+    <pre>JAVA_HOME=/usr/local/java/jdk1.8.0_161
 CLASSPATH=$JAVA_HOME/lib/
 PATH=$PATH:$JAVA_HOME/bin
 export PATH JAVA_HOME CLASSPATH</pre>
-        </li>
-        <li>
-            保存生效
-            <pre>source /etc/profile
+    <p>保存生效</p>
+    <pre>source /etc/profile
 # 或者
 source ~/.bashrc</pre>
-        </li>
-
-    </ol>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/jquery@1.12.4/dist/jquery.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@3.3.7/dist/js/bootstrap.min.js"></script>
